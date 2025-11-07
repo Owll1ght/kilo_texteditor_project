@@ -1,4 +1,5 @@
-# kilo_texteditor_project
-This is a little project where I'm still following a guide about making a text editor. I plan to expand on this project by having my own custom input for the text editor, but for now, I'm following a guide.  
+This is a repository for my C project, where I make a text editor in C.
 
-The link of the guide : https://viewsourcecode.org/snaptoken/kilo/index.html
+I'm following a guide for this, but maybe I'll make changes later on, who knows.
+
+The link : https://viewsourcecode.org/snaptoken/kilo/
