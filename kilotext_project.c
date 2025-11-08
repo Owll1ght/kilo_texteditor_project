@@ -13,24 +13,31 @@
 
 /*** data ***/
 
-struct termios original_terminal;
+struct editorConfig {
+  struct termios original_terminal;
+};
+
+struct editorConfig Edt;
 
 /*** terminal ***/
 
 void die(const char *function_used){
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+  write(STDOUT_FILENO, "\x1b[H", 3);
+
   perror(function_used);
   exit(1);
 }
 
 void disableRawMode(){
-  if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_terminal) == -1) die("tcsetattr");
+  if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &Edt.original_terminal) == -1) die("tcsetattr");
 }
 
 void enableRawMode(){
-  if(tcgetattr(STDIN_FILENO, &original_terminal) == -1) die("tcgetattr");
+  if(tcgetattr(STDIN_FILENO, &Edt.original_terminal) == -1) die("tcgetattr");
   atexit(disableRawMode);
 
-  struct termios raw_mode = original_terminal;
+  struct termios raw_mode = Edt.original_terminal;
   raw_mode.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
   raw_mode.c_oflag &= ~(OPOST);
   raw_mode.c_cflag |= (CS8);
@@ -50,6 +57,25 @@ char editorReadKey(){
   return in_c;
 }
 
+/*** output ***/
+
+void editorDrawRows(){
+  int y;
+  for(y = 0; y < 24; y++){
+    write(STDOUT_FILENO, "|\r\n", 3);
+    printf("|\r\n");
+  }
+}
+
+void editorRefreshScreen(){
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+  write(STDOUT_FILENO, "\x1b[H", 3);
+
+  editorDrawRows();
+
+  write(STDOUT_FILENO, "\x1b[H", 3);
+}
+
 /*** input ***/
 
 void editorProcessKeyPress(){
@@ -57,6 +83,8 @@ void editorProcessKeyPress(){
 
   switch (in_c) {
     case CTRL_KEY('q'):
+      write(STDOUT_FILENO, "\x1b[2J", 4);
+      write(STDOUT_FILENO, "\x1b[H", 3);
       exit(0);
       break;
   }
@@ -68,6 +96,7 @@ int main(){
   enableRawMode();
 
   while(1){
+    editorRefreshScreen();
     editorProcessKeyPress();
   }
   return 0;
