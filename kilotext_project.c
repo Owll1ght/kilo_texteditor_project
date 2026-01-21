@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <termios.h>
@@ -92,26 +93,53 @@ int getWindowSize(int *rows, int *cols){
   }
 }
 
+/*** string buffer ***/ 
+
+struct stringBuf {
+  char *b;
+  int len;
+};
+
+#define STRBUF_INIT {NULL, 0}
+
+void sbufAppend(struct stringBuf *sb, const char *s, int len){
+  char *new = realloc(sb->b, sb->len + len);
+
+  if (new==NULL) return;
+  memcpy(&new[sb->len], s, len);
+  sb->b = new;
+  sb->len += len;
+}
+
+void sbufFree(struct stringBuf *sb) {
+  free(sb->b);
+}
+
 /*** output ***/
 
-void editorDrawRows(){
+void editorDrawRows(struct stringBuf *sb){
   int y;
   for(y = 0; y < Edt.screenrows; y++){
-    write(STDOUT_FILENO, "|", 1);
+    sbufAppend(sb, "|", 1); 
 
     if(y<Edt.screenrows - 1){
-      write(STDOUT_FILENO, "\r\n", 2);
+      sbufAppend(sb, "\r\n", 2);
     }
   }
 }
 
 void editorRefreshScreen(){
-  write(STDOUT_FILENO, "\x1b[2J", 4);
-  write(STDOUT_FILENO, "\x1b[H", 3);
+  struct stringBuf sb = STRBUF_INIT;
 
-  editorDrawRows();
+  sbufAppend(&sb, "\x1b[2J", 4);
+  sbufAppend(&sb, "\x1b[H", 3);
 
-  write(STDOUT_FILENO, "\x1b[H", 3);
+  editorDrawRows(&sb);
+
+  sbufAppend(&sb, "\x1b[H", 3);
+
+  write(STDOUT_FILENO, sb.b, sb.len);
+  sbufFree(&sb);
 }
 
 /*** input ***/
