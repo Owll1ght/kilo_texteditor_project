@@ -13,6 +13,8 @@
 
 #define CTRL_KEY(key) ((key) & 0x1f)
 
+#define KILO_VERSION "0.0.1"
+
 /*** data ***/
 
 struct editorConfig {
@@ -120,8 +122,24 @@ void sbufFree(struct stringBuf *sb) {
 void editorDrawRows(struct stringBuf *sb){
   int y;
   for(y = 0; y < Edt.screenrows; y++){
-    sbufAppend(sb, "|", 1); 
+    // Welcome Message
+    if (y == Edt.screenrows / 3){
+      char welcome[80];
+      int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo Editor -- Version %s", KILO_VERSION);
+      if (welcomelen > Edt.screencols) welcomelen = Edt.screencols;
+      // padding to center
+      int padding = (Edt.screencols - welcomelen) / 2;
+      if (padding) {
+        sbufAppend(sb, "|", 1);
+        padding--;
+      }
+      while (padding--) sbufAppend(sb, " ", 1);
+      sbufAppend(sb, welcome, welcomelen);
+    } else {
+      sbufAppend(sb, "|", 1); 
+    }
 
+    sbufAppend(sb, "\x1b[K", 3);
     if(y<Edt.screenrows - 1){
       sbufAppend(sb, "\r\n", 2);
     }
@@ -131,12 +149,13 @@ void editorDrawRows(struct stringBuf *sb){
 void editorRefreshScreen(){
   struct stringBuf sb = STRBUF_INIT;
 
-  sbufAppend(&sb, "\x1b[2J", 4);
+  sbufAppend(&sb, "\x1b[?25l", 6);
   sbufAppend(&sb, "\x1b[H", 3);
 
   editorDrawRows(&sb);
 
   sbufAppend(&sb, "\x1b[H", 3);
+  sbufAppend(&sb, "\x1b[?25h", 6);
 
   write(STDOUT_FILENO, sb.b, sb.len);
   sbufFree(&sb);
