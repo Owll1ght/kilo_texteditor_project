@@ -15,9 +15,17 @@
 
 #define KILO_VERSION "0.0.1"
 
+enum editorKey{
+  ARROW_LEFT = 1000,
+  ARROW_RIGHT,
+  ARROW_UP,
+  ARROW_DOWN
+};
+
 /*** data ***/
 
 struct editorConfig {
+  int cx, cy; // cursor position
   int screenrows;
   int screencols;
   struct termios original_terminal;
@@ -54,13 +62,32 @@ void enableRawMode(){
   if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw_mode) == -1) die("tcsetattr");
 }
 
-char editorReadKey(){
+int editorReadKey(){
   int num_read;
   char in_c;
   while((num_read = read(STDIN_FILENO, &in_c, 1)) != 1){
     if(num_read == -1 && errno != EAGAIN) die("read");
   }
-  return in_c;
+
+  if (in_c == '\x1b'){
+    char sequence[3];
+
+    if (read(STDIN_FILENO, &sequence[0], 1) != 1) return '\x1b';
+    if (read(STDIN_FILENO, &sequence[1], 1) != 1) return '\x1b';
+
+    if (sequence[0] == '['){
+      switch (sequence[1]){
+        case 'A': return ARROW_UP;
+        case 'B': return ARROW_DOWN;
+        case 'C': return ARROW_RIGHT;
+        case 'D': return ARROW_LEFT;
+      }
+    }
+
+    return '\x1b';
+  } else {
+    return in_c;
+  }
 }
 
 int getCursorPosition(int *rows, int *cols){
@@ -154,7 +181,10 @@ void editorRefreshScreen(){
 
   editorDrawRows(&sb);
 
-  sbufAppend(&sb, "\x1b[H", 3);
+  char buffer[32];
+  snprintf(buffer, sizeof(buffer), "\x1b[%d;%dH", Edt.cy + 1, Edt.cx + 1);
+  sbufAppend(&sb, buffer, strlen(buffer));
+
   sbufAppend(&sb, "\x1b[?25h", 6);
 
   write(STDOUT_FILENO, sb.b, sb.len);
@@ -163,8 +193,33 @@ void editorRefreshScreen(){
 
 /*** input ***/
 
+void editorMoveCursor(int key){
+  switch (key) {
+    case ARROW_LEFT:
+      if (Edt.cx != 0){
+        Edt.cx--;
+      }
+      break;
+    case ARROW_RIGHT:
+      if (Edt.cx != Edt.screencols - 1) {
+        Edt.cx++;
+      }
+      break;
+    case ARROW_UP:
+      if (Edt.cy != 0){
+        Edt.cy--;
+      }
+      break;
+    case ARROW_DOWN:
+      if (Edt.cy != Edt.screenrows - 1){
+        Edt.cy++;
+      }
+      break;
+  }
+}
+
 void editorProcessKeyPress(){
-  char in_c = editorReadKey();
+  int in_c = editorReadKey();
 
   switch (in_c) {
     case CTRL_KEY('q'):
@@ -172,12 +227,21 @@ void editorProcessKeyPress(){
       write(STDOUT_FILENO, "\x1b[H", 3);
       exit(0);
       break;
+
+    case ARROW_UP:
+    case ARROW_DOWN:
+    case ARROW_LEFT:
+    case ARROW_RIGHT:
+      editorMoveCursor(in_c);
+      break;
   }
 }
 
 /*** init ***/
 
 void initEditor(){
+  Edt.cx = 0;
+  Edt.cy = 0;
   if(getWindowSize(&Edt.screenrows, &Edt.screencols) == -1) die("getWindowSize");
 }
 
