@@ -1,13 +1,19 @@
 /*** include ***/
 
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <termios.h>
+#include <stdint.h>
 
 /*** defines ***/
 
@@ -20,6 +26,7 @@ enum editorKey {
     ARROW_RIGHT,
     ARROW_UP,
     ARROW_DOWN,
+    DEL_KEY,
     HOME_KEY,
     END_KEY,
     PAGE_UP,
@@ -28,10 +35,17 @@ enum editorKey {
 
 /*** data ***/
 
+typedef struct edtrow {
+    int size;
+    char *chars;
+} edtrow;
+
 struct editorConfig {
     int cx, cy; // cursor position
     int screenrows;
     int screencols;
+    int numrows;
+    edtrow row;
     struct termios original_terminal;
 };
 
@@ -86,6 +100,8 @@ int editorReadKey() {
                     switch(sequence[1]) {
                     case '1':
                         return HOME_KEY;
+                    case '3':
+                        return DEL_KEY;
                     case '4':
                         return END_KEY;
                     case '5':
@@ -161,11 +177,35 @@ int getWindowSize(int *rows, int *cols) {
     }
 }
 
+/*** file i/o ***/
+
+void editorOpen(char *filename) {
+    FILE *fp = fopen(filename, "r");
+    if(!fp) die("fopen");
+
+    char *line = NULL;
+    size_t linecap = 0;
+    ssize_t linelen;
+    linelen = getline(&line, &linecap, fp);
+    if(linelen != -1) {
+        while(linelen > 0 && (line[linelen - 1] == '\n' ||
+                              line[linelen - 1] == '\r'))
+            linelen--;
+        Edt.row.size = linelen;
+        Edt.row.chars = malloc(linelen+1);
+        memcpy(Edt.row.chars, line, linelen);
+        Edt.row.chars[linelen] = '\0';
+        Edt.numrows = 1;
+    }
+    free(line);
+    fclose(fp);
+}
+
 /*** string buffer ***/
 
 struct stringBuf {
     char *b;
-    int len;
+    uint32_t len;
 };
 
 #define STRBUF_INIT {NULL, 0}
@@ -188,21 +228,27 @@ void sbufFree(struct stringBuf *sb) {
 void editorDrawRows(struct stringBuf *sb) {
     int y;
     for(y = 0; y < Edt.screenrows; y++) {
-        // Welcome Message
-        if (y == Edt.screenrows / 3) {
-            char welcome[80];
-            int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo Editor -- Version %s", KILO_VERSION);
-            if (welcomelen > Edt.screencols) welcomelen = Edt.screencols;
-            // padding to center
-            int padding = (Edt.screencols - welcomelen) / 2;
-            if (padding) {
+        // if there are no files being read, it will display the Welcome Message
+        if(Edt.numrows == 0 && y >= Edt.numrows) {
+            if (y == Edt.screenrows / 3) {
+                char welcome[80];
+                int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo Editor -- Version %s", KILO_VERSION);
+                if (welcomelen > Edt.screencols) welcomelen = Edt.screencols;
+                // padding to center
+                int padding = (Edt.screencols - welcomelen) / 2;
+                if (padding) {
+                    sbufAppend(sb, "|", 1);
+                    padding--;
+                }
+                while (padding--) sbufAppend(sb, " ", 1);
+                sbufAppend(sb, welcome, welcomelen);
+            } else {
                 sbufAppend(sb, "|", 1);
-                padding--;
             }
-            while (padding--) sbufAppend(sb, " ", 1);
-            sbufAppend(sb, welcome, welcomelen);
         } else {
-            sbufAppend(sb, "|", 1);
+            int len = Edt.row.size;
+            if(len > Edt.screencols) len = Edt.screencols;
+            sbufAppend(sb, Edt.row.chars, len);
         }
 
         sbufAppend(sb, "\x1b[K", 3);
@@ -298,12 +344,21 @@ void editorProcessKeyPress() {
 void initEditor() {
     Edt.cx = 0;
     Edt.cy = 0;
+    Edt.numrows = 0;
+
     if(getWindowSize(&Edt.screenrows, &Edt.screencols) == -1) die("getWindowSize");
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     enableRawMode();
     initEditor();
+    if (argc >= 2) {
+        editorOpen(argv[1]);
+    }
+    // if (argc > 2) {
+    //     printf("too much argument!\r\n");
+    //     return -1;
+    // }
 
     while(1) {
         editorRefreshScreen();
