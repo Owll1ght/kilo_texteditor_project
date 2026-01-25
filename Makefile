@@ -1,2 +1,2 @@
 kilotexteditor : kilotext_project.c
-	$(CC) kilotext_project.c -o kilotexteditor -Wall -Wextra -pedantic -std=c99
+	$(CC) kilotext_project.c -o editor -Wall -Wextra -pedantic -std=c99

@@ -45,7 +45,7 @@ struct editorConfig {
     int screenrows;
     int screencols;
     int numrows;
-    edtrow row;
+    edtrow *row;
     struct termios original_terminal;
 };
 
@@ -177,6 +177,19 @@ int getWindowSize(int *rows, int *cols) {
     }
 }
 
+/*** row operations ***/
+
+void editorAppendRow(char *s, size_t len) {
+    Edt.row = realloc(Edt.row, sizeof(edtrow)*(Edt.numrows + 1));
+
+    int tempNum = Edt.numrows;
+    Edt.row[tempNum].size = len;
+    Edt.row[tempNum].chars = malloc(len+1);
+    memcpy(Edt.row[tempNum].chars, s, len);
+    Edt.row[tempNum].chars[len] = '\0';
+    Edt.numrows++;
+}
+
 /*** file i/o ***/
 
 void editorOpen(char *filename) {
@@ -186,16 +199,11 @@ void editorOpen(char *filename) {
     char *line = NULL;
     size_t linecap = 0;
     ssize_t linelen;
-    linelen = getline(&line, &linecap, fp);
-    if(linelen != -1) {
+    while((linelen = getline(&line, &linecap, fp)) != -1 ) {
         while(linelen > 0 && (line[linelen - 1] == '\n' ||
                               line[linelen - 1] == '\r'))
             linelen--;
-        Edt.row.size = linelen;
-        Edt.row.chars = malloc(linelen+1);
-        memcpy(Edt.row.chars, line, linelen);
-        Edt.row.chars[linelen] = '\0';
-        Edt.numrows = 1;
+        editorAppendRow(line, linelen);
     }
     free(line);
     fclose(fp);
@@ -228,9 +236,9 @@ void sbufFree(struct stringBuf *sb) {
 void editorDrawRows(struct stringBuf *sb) {
     int y;
     for(y = 0; y < Edt.screenrows; y++) {
-        // if there are no files being read, it will display the Welcome Message
-        if(Edt.numrows == 0 && y >= Edt.numrows) {
-            if (y == Edt.screenrows / 3) {
+        if(y >= Edt.numrows) {
+            // if there are no files being read, it will display the Welcome Message
+            if (Edt.numrows == 0 && y == Edt.screenrows / 3) {
                 char welcome[80];
                 int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo Editor -- Version %s", KILO_VERSION);
                 if (welcomelen > Edt.screencols) welcomelen = Edt.screencols;
@@ -246,9 +254,9 @@ void editorDrawRows(struct stringBuf *sb) {
                 sbufAppend(sb, "|", 1);
             }
         } else {
-            int len = Edt.row.size;
+            int len = Edt.row[y].size;
             if(len > Edt.screencols) len = Edt.screencols;
-            sbufAppend(sb, Edt.row.chars, len);
+            sbufAppend(sb, Edt.row[y].chars, len);
         }
 
         sbufAppend(sb, "\x1b[K", 3);
@@ -345,6 +353,7 @@ void initEditor() {
     Edt.cx = 0;
     Edt.cy = 0;
     Edt.numrows = 0;
+    Edt.row = NULL;
 
     if(getWindowSize(&Edt.screenrows, &Edt.screencols) == -1) die("getWindowSize");
 }
@@ -352,13 +361,13 @@ void initEditor() {
 int main(int argc, char *argv[]) {
     enableRawMode();
     initEditor();
-    if (argc >= 2) {
+    if (argc == 2) {
         editorOpen(argv[1]);
     }
-    // if (argc > 2) {
-    //     printf("too much argument!\r\n");
-    //     return -1;
-    // }
+    if (argc > 2) {
+        printf("Too much argument!\r\n");
+        return -1;
+    }
 
     while(1) {
         editorRefreshScreen();
